@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
 // Public paths that must be reachable without a session.
@@ -9,9 +10,9 @@ export default auth((req) => {
   if (!req.auth && !isPublic) {
     const url = new URL("/signin", req.nextUrl.origin);
     url.searchParams.set("callbackUrl", pathname);
-    return Response.redirect(url);
+    return NextResponse.redirect(url);
   }
-  return undefined;
+  return NextResponse.next();
 });
 
 export const config = {
