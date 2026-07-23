@@ -12,9 +12,19 @@ export class SheetsError extends Error {
   }
 }
 
-// Sheet names containing spaces must be single-quoted in A1 range notation.
-const LOG_RANGE = "'Monthly Log'!A:I";
-const REACH_RANGE = "'Network Reach'!A:C";
+/** Quote a sheet title for A1 notation (single quotes; escape any internal quote). */
+function quoteTitle(title: string): string {
+  return `'${title.replace(/'/g, "''")}'`;
+}
+
+/** Pick the first tab title matching any of the patterns, in priority order. */
+function pickTitle(titles: string[], matchers: RegExp[]): string | undefined {
+  for (const re of matchers) {
+    const hit = titles.find((t) => re.test(t.trim()));
+    if (hit) return hit;
+  }
+  return undefined;
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -170,13 +180,38 @@ function getAuth() {
 export async function readSheet(): Promise<{ rows: LogRow[]; reach: NetworkReach }> {
   try {
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
+
+    // Resolve the real tab titles at runtime so exact naming/spacing/casing
+    // can't break the read. Read the whole tab (title only, no A:I bound) so an
+    // added column like "Pastor" can't truncate the data — parsing is by header.
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: SHEET_ID,
+      fields: "sheets.properties.title",
+    });
+    const titles = (meta.data.sheets ?? [])
+      .map((s) => s.properties?.title ?? "")
+      .filter(Boolean);
+
+    const logTitle = pickTitle(titles, [/^monthly\s*log$/i, /log/i]) ?? titles[0];
+    const reachTitle = pickTitle(titles, [/^network\s*reach$/i, /reach/i]);
+
+    if (!logTitle) {
+      throw new SheetsError("No tabs found in the spreadsheet");
+    }
+
+    const rangeList = [quoteTitle(logTitle)];
+    if (reachTitle) rangeList.push(quoteTitle(reachTitle));
+
     const res = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: SHEET_ID,
-      ranges: [LOG_RANGE, REACH_RANGE],
+      ranges: rangeList,
     });
-    const ranges = res.data.valueRanges ?? [];
-    const logValues = (ranges[0]?.values ?? []) as string[][];
-    const reachValues = (ranges[1]?.values ?? []) as string[][];
+    const valueRanges = res.data.valueRanges ?? [];
+    const logValues = (valueRanges[0]?.values ?? []) as string[][];
+    const reachValues = reachTitle
+      ? ((valueRanges[1]?.values ?? []) as string[][])
+      : [];
+
     return { rows: parseLog(logValues), reach: parseReach(reachValues) };
   } catch (e) {
     if (e instanceof SheetsError) throw e;
