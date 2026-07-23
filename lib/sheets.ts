@@ -12,8 +12,9 @@ export class SheetsError extends Error {
   }
 }
 
-const LOG_RANGE = "Monthly Log!A:I";
-const REACH_RANGE = "Network Reach!A:C";
+// Sheet names containing spaces must be single-quoted in A1 range notation.
+const LOG_RANGE = "'Monthly Log'!A:I";
+const REACH_RANGE = "'Network Reach'!A:C";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
